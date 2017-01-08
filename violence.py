@@ -1,9 +1,15 @@
+#!/usr/bin/env python
 import argparse
 import os.path
 from scapy.all import *
 
 VER  = "v0.1"
 pkts = []
+dsthost = ""
+dstport = ""
+
+dstsocket = None
+dststream = None
 
 def pkt_collect(p):
     print p.summary()
@@ -14,10 +20,12 @@ def start_sniff(p_num, pfile, net_filter):
     wrpcap(pfile, pkts)
 
 def pkt_fuzz(p):
-    print p.summary()
-    ### Test
-    if TCP in p and (p[TCP].sport == 80 or p[TCP].dport == 80):
+    if TCP in p and (p[TCP].dport == dstport and p[TCP].payload):
+        p[TCP].dhost = dsthost
+        p[TCP].dport = dstport
         print p.show()
+        response = dststream.send(p.getlayer(Raw))
+        print "[*] Length: %s" %(response)
 
 def start_fuzz(pfile):
     sniff(offline=pfile, prn=pkt_fuzz)
@@ -33,17 +41,32 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description='Violence - ' + VER)
     p.add_argument('-m', '--mode', default='sniff', type=check_mode, help='collect some useful network data')
     p.add_argument('-c', '--count', default=10, help='how many packets to collect')
-    p.add_argument('-p', '--pcapfile', default='violence.pcap', help='pcap file')
+    p.add_argument('-i', '--pcapfile', default='violence.pcap', help='pcap file')
     p.add_argument('-f', '--filter', default="tcp port 80", help='packet filter in bpf syntax')
+    p.add_argument('-v', '--host', default=None, help='dest host of fuzzing')
+    p.add_argument('-p', '--port', default=None, help='dest port of fuzzing')
     args = p.parse_args()
 
     if args.mode == 'sniff':
         print "\n[*] Start sniffing...\n"
         start_sniff(args.count, args.pcapfile, args.filter)
-    if args.mode == 'fuzz':        
+    if args.mode == 'fuzz':
         if os.path.isfile(args.pcapfile):
+            dsthost   = args.host
+            dstport   = int(args.port)
+            dstsocket = socket.socket()
+            dstsocket.connect((dsthost, dstport))
+            
+            print "[*] Connecting to %s on port %s\n" %(dsthost, dstport)
+            dststream = StreamSocket(dstsocket)
+            
+            print "[*] Test connection ...\n"
+            testpkt = IP(dst=dsthost)/TCP(dport=dstport)/fuzz(Raw())
+            resp = dststream.send(testpkt)
+            print resp
+            
             print "\n[*] Start fuzzing. Feeding fuzzer with %s\n" %(args.pcapfile)
             start_fuzz(args.pcapfile)
         else:
-            print "\n[*] Unable to find %s\n" %(args.pcapfile)
+            print "\n[*] Unable to find %s\n" %(args.outfile)
 
