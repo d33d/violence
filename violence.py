@@ -15,6 +15,7 @@ def start_sniff(p_num, pfile, net_filter):
 
 def pkt_fuzz(p):
     print p.summary()
+    ### Test
     if TCP in p and (p[TCP].sport == 80 or p[TCP].dport == 80):
         print p.show()
 
